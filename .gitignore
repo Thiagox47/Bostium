@@ -1,0 +1,17 @@
+# Ignorar arquivos locais de desenvolvimento
+*.cs
+*.dll
+*.ico
+*.jpg
+*.iss
+*.bat
+*.log
+Bostium.exe
+ProcessIcon.exe
+NavegadorLeve.exe
+Output/
+runtimes/
+.vs/
+bin/
+obj/
+ARQUITETURA_E_ENGENHARIA_REVERSA.md
