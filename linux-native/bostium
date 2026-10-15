@@ -1,0 +1,17 @@
+#!/bin/bash
+# Launcher nativo do Bostium para Linux
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Procura o arquivo python na mesma pasta ou em /usr/lib/bostium ou ~/.local/share/bostium
+if [ -f "$SCRIPT_DIR/bostium.py" ]; then
+    APP_PATH="$SCRIPT_DIR/bostium.py"
+elif [ -f "/usr/lib/bostium/bostium.py" ]; then
+    APP_PATH="/usr/lib/bostium/bostium.py"
+elif [ -f "$HOME/.local/share/bostium-native/bostium.py" ]; then
+    APP_PATH="$HOME/.local/share/bostium-native/bostium.py"
+else
+    echo "Erro: bostium.py não encontrado."
+    exit 1
+fi
+
+exec python3 "$APP_PATH" "$@"

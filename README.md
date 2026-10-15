@@ -22,10 +22,12 @@
 
 Escolha a sua versão e pare de passar raiva com navegador travando:
 
-| Pacote | Tamanho | Descrição | Link de Download |
-| :--- | :---: | :--- | :--- |
-| **Instalador Oficial** | ~2.4 MB | Cria atalhos na Área de Trabalho e Menu Iniciar, com desinstalador limpo. | [🚀 **Baixar Bostium_Setup.exe**](https://github.com/Thiagox47/Bostium/raw/main/Bostium_Setup.exe) |
-| **Versão Portátil** | ~550 KB | Não precisa instalar nada! Descompacte em qualquer pasta ou pendrive e use. | [🎒 **Baixar Bostium_Portatil.zip**](https://github.com/Thiagox47/Bostium/raw/main/Bostium_Portatil.zip) |
+| Pacote | Plataforma | Tamanho | Descrição | Link de Download |
+| :--- | :---: | :---: | :--- | :--- |
+| **Instalador Oficial** | Windows | ~2.5 MB | Instala para o usuário (sem pedir admin) com atalhos e desinstalador limpo. | [🚀 **Baixar Bostium_Setup.exe**](https://github.com/Thiagox47/Bostium/raw/main/Bostium_Setup.exe) |
+| **Versão Portátil** | Windows | ~560 KB | Não precisa instalar nada! Descompacte em qualquer pasta ou pendrive e use. | [🎒 **Baixar Bostium_Portatil.zip**](https://github.com/Thiagox47/Bostium/raw/main/Bostium_Portatil.zip) |
+| **Pacote Debian/Ubuntu** | Linux Nativo | ~224 KB | Pacote oficial (.deb) para Ubuntu, Debian, Linux Mint, Pop!_OS (100% nativo, sem Wine). | [🐧 **Baixar bostium_1.0_all.deb**](https://github.com/Thiagox47/Bostium/raw/main/bostium_1.0_all.deb) |
+| **Pacote Universal Linux** | Linux Nativo | ~226 KB | Pacote portátil (.tar.gz) com instalador para qualquer distribuição Linux. | [📦 **Baixar Bostium-Linux-Nativo.tar.gz**](https://github.com/Thiagox47/Bostium/raw/main/Bostium-Linux-Nativo.tar.gz) |
 
 👉 Você também pode conferir o histórico completo na [Página de Releases do GitHub](https://github.com/Thiagox47/Bostium/releases).
 

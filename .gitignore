@@ -15,3 +15,6 @@ runtimes/
 bin/
 obj/
 ARQUITETURA_E_ENGENHARIA_REVERSA.md
+__pycache__/
+*.pyc
+*.ps1
