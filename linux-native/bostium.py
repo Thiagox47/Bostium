@@ -10,6 +10,10 @@ import sys
 import json
 import gc
 import re
+import time
+import uuid
+import tempfile
+import subprocess
 import urllib.parse
 from datetime import datetime
 
@@ -30,7 +34,11 @@ from gi.repository import Gtk, Gdk, GLib, WebKit2, Pango
 CONFIG_DIR = os.path.expanduser("~/.config/bostium")
 BOOKMARKS_FILE = os.path.join(CONFIG_DIR, "bookmarks.json")
 SESSION_FILE = os.path.join(CONFIG_DIR, "session.json")
+SESSIONS_DIR = os.path.join(CONFIG_DIR, "sessions")
+CLOSED_WINDOWS_DIR = os.path.join(CONFIG_DIR, "closed_windows")
 os.makedirs(CONFIG_DIR, exist_ok=True)
+os.makedirs(SESSIONS_DIR, exist_ok=True)
+os.makedirs(CLOSED_WINDOWS_DIR, exist_ok=True)
 
 DEFAULT_URL = "https://www.google.com"
 MAX_ACTIVE_ENGINES = 2
@@ -189,11 +197,15 @@ class TabInfo:
 
 
 class BostiumApp(Gtk.Window):
-    def __init__(self):
+    def __init__(self, specific_session_file=None):
         super().__init__(title="Bostium Browser")
         self.set_default_size(1200, 780)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.get_style_context().add_class("main-window")
+
+        self.window_id = uuid.uuid4().hex
+        self.specific_session_file = specific_session_file
+        self.recently_closed_tabs = []
 
         # Configura contexto WebKit otimizado para baixa memória
         self.web_context = WebKit2.WebContext.get_default()
@@ -344,6 +356,14 @@ class BostiumApp(Gtk.Window):
         key, mod = Gtk.accelerator_parse("<Primary>t")
         accel_group.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.create_tab(DEFAULT_URL))
 
+        # Ctrl+Shift+T: Reabrir Guia / Janela Fechada
+        key, mod = Gtk.accelerator_parse("<Primary><Shift>t")
+        accel_group.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.restore_closed_tab_or_window())
+
+        # Ctrl+N: Nova Janela
+        key, mod = Gtk.accelerator_parse("<Primary>n")
+        accel_group.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.open_new_window())
+
         # Ctrl+W: Fechar Guia
         key, mod = Gtk.accelerator_parse("<Primary>w")
         accel_group.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.close_active_tab())
@@ -400,10 +420,22 @@ class BostiumApp(Gtk.Window):
         tab_box.pack_start(btn_close, False, False, 0)
         tab.btn_close = btn_close
 
-        # Evento de clique para ativar a aba
+        # Evento de clique para ativar, fechar ou menu de contexto da aba
+        def on_tab_button_press(w, e):
+            if e.button == 2:  # Clique do meio (scroll) fecha a aba
+                self.close_tab(tab)
+                return True
+            elif e.button == 1:
+                self.switch_to_tab(self.tabs.index(tab))
+                return True
+            elif e.button == 3:  # Clique direito: menu de contexto
+                self.show_tab_context_menu(tab, e)
+                return True
+            return False
+
         event_box = Gtk.EventBox()
         event_box.add(tab_box)
-        event_box.connect("button-press-event", lambda w, e: self.switch_to_tab(self.tabs.index(tab)))
+        event_box.connect("button-press-event", on_tab_button_press)
         tab.tab_widget = event_box
 
         self.tabs_container.pack_start(event_box, False, False, 0)
@@ -434,10 +466,13 @@ class BostiumApp(Gtk.Window):
         webview = WebKit2.WebView.new_with_context(self.web_context)
         webview.set_settings(settings)
 
-        # Sinais de carregamento
+        # Sinais de carregamento, nova janela e permissões
         webview.connect("load-changed", self.on_webview_load_changed, tab)
         webview.connect("notify::title", self.on_webview_title_changed, tab)
         webview.connect("notify::uri", self.on_webview_uri_changed, tab)
+        webview.connect("create", self.on_create_webview)
+        webview.connect("decide-policy", self.on_decide_policy)
+        webview.connect("permission-request", self.on_permission_request)
 
         tab.container.pack_start(webview, True, True, 0)
         webview.show_all()
@@ -531,6 +566,19 @@ class BostiumApp(Gtk.Window):
 
     def close_tab(self, tab):
         idx = self.tabs.index(tab)
+
+        # Registra guia fechada no histórico para Ctrl+Shift+T
+        u = tab.webview.get_uri() if tab.webview else tab.url
+        if u and not u.startswith("about:blank") and (u.startswith("http://") or u.startswith("https://")):
+            self.recently_closed_tabs.append({
+                "url": u,
+                "title": tab.title or "Nova Guia",
+                "pinned": tab.is_pinned,
+                "closed_at": time.time()
+            })
+            if len(self.recently_closed_tabs) > 30:
+                self.recently_closed_tabs.pop(0)
+
         if tab.webview:
             tab.container.remove(tab.webview)
             tab.webview.destroy()
@@ -616,6 +664,39 @@ class BostiumApp(Gtk.Window):
         tab = self.get_active_tab()
         if tab and tab.webview:
             tab.webview.reload()
+
+    def on_create_webview(self, webview, navigation_action):
+        """Ao abrir links que solicitam nova janela (ex: target='_blank'), abre no mesmo navegador como nova aba."""
+        req = navigation_action.get_request()
+        uri = req.get_uri() if req else DEFAULT_URL
+        new_tab = self.create_tab(uri)
+        return new_tab.webview
+
+    def on_decide_policy(self, webview, decision, decision_type):
+        """Intercepta cliques com o botão do meio (scroll) ou novas abas para abrir no mesmo navegador."""
+        if decision_type == WebKit2.PolicyDecisionType.NEW_WINDOW_ACTION:
+            action = decision.get_navigation_action()
+            req = action.get_request() if action else None
+            if req and req.get_uri():
+                self.create_tab(req.get_uri())
+                decision.ignore()
+                return True
+        elif decision_type == WebKit2.PolicyDecisionType.NAVIGATION_ACTION:
+            action = decision.get_navigation_action()
+            if action and action.get_mouse_button() == 2:  # Botão 2 = Scroll do mouse / clique do meio
+                req = action.get_request()
+                if req and req.get_uri():
+                    self.create_tab(req.get_uri())
+                    decision.ignore()
+                    return True
+        return False
+
+    def on_permission_request(self, webview, request):
+        """Permite notificações para sites web nativamente."""
+        if hasattr(WebKit2, 'NotificationPermissionRequest') and isinstance(request, WebKit2.NotificationPermissionRequest):
+            request.allow()
+            return True
+        return False
 
     # ==========================================
     # CONTROLE DE MEMÓRIA RAM & MONITOR REAL-TIME
@@ -763,40 +844,253 @@ class BostiumApp(Gtk.Window):
         is_bm = any(b["url"] == url for b in self.bookmarks)
         self.btn_star.set_label("★" if is_bm else "☆")
 
+    def show_status_message(self, msg):
+        if hasattr(self, "lbl_status_msg"):
+            self.lbl_status_msg.set_text(msg)
+
+    def open_new_window(self):
+        try:
+            subprocess.Popen([sys.executable, os.path.abspath(__file__)])
+        except Exception:
+            pass
+
+    def show_tab_context_menu(self, tab, event):
+        menu = Gtk.Menu()
+
+        item_reopen = Gtk.MenuItem(label="⟲ Reabrir Guia / Janela Fechada (Ctrl+Shift+T)")
+        item_reopen.connect("activate", lambda *a: self.restore_closed_tab_or_window())
+        menu.append(item_reopen)
+
+        item_pin = Gtk.MenuItem(label="📌 Desafixar Guia" if tab.is_pinned else "📌 Fixar Guia")
+        item_pin.connect("activate", lambda *a: self.toggle_pin_active_tab())
+        menu.append(item_pin)
+
+        item_close = Gtk.MenuItem(label="✕ Fechar Guia (Ctrl+W)")
+        item_close.connect("activate", lambda *a: self.close_tab(tab))
+        menu.append(item_close)
+
+        menu.show_all()
+        menu.popup_at_pointer(event)
+
+    def read_closed_window_file(self, filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return {
+                    "path": filepath,
+                    "closed_at": data.get("closed_at", os.path.getmtime(filepath)),
+                    "tabs": data.get("tabs", [])
+                }
+        except Exception:
+            return None
+
+    def get_latest_closed_window(self):
+        if not os.path.exists(CLOSED_WINDOWS_DIR):
+            return None
+        files = [os.path.join(CLOSED_WINDOWS_DIR, f) for f in os.listdir(CLOSED_WINDOWS_DIR) if f.startswith("window_") and f.endswith(".json")]
+        if not files:
+            return None
+        items = []
+        for f in files:
+            info = self.read_closed_window_file(f)
+            if info:
+                items.append(info)
+        if not items:
+            return None
+        items.sort(key=lambda x: x["closed_at"], reverse=True)
+        return items[0]
+
+    def clean_old_closed_windows(self, max_to_keep=30):
+        try:
+            if not os.path.exists(CLOSED_WINDOWS_DIR):
+                return
+            files = [os.path.join(CLOSED_WINDOWS_DIR, f) for f in os.listdir(CLOSED_WINDOWS_DIR) if f.startswith("window_") and f.endswith(".json")]
+            if len(files) <= max_to_keep:
+                return
+            items = []
+            for f in files:
+                info = self.read_closed_window_file(f)
+                if info:
+                    items.append(info)
+            items.sort(key=lambda x: x["closed_at"], reverse=True)
+            for old in items[max_to_keep:]:
+                try:
+                    os.remove(old["path"])
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def restore_closed_tab_or_window(self):
+        last_tab = self.recently_closed_tabs[-1] if self.recently_closed_tabs else None
+        last_window = self.get_latest_closed_window()
+
+        if last_tab and (not last_window or last_tab.get("closed_at", 0) >= last_window.get("closed_at", 0)):
+            item = self.recently_closed_tabs.pop()
+            if len(self.tabs) == 1 and self.tabs[0].url == DEFAULT_URL and not self.tabs[0].webview:
+                self.close_tab(self.tabs[0])
+            self.create_tab(item["url"], is_pinned=item.get("pinned", False))
+            self.show_status_message("Guia reaberta: " + str(item.get("title", "Nova Guia")))
+            return True
+
+        if last_window:
+            file_path = last_window["path"]
+            claim_temp = os.path.join(tempfile.gettempdir(), "bostium_restore_" + uuid.uuid4().hex + ".json")
+            try:
+                os.rename(file_path, claim_temp)
+                subprocess.Popen([sys.executable, os.path.abspath(__file__), "--session-file", claim_temp])
+                self.show_status_message("Janela fechada reaberta!")
+                return True
+            except Exception:
+                pass
+
+        if last_tab:
+            item = self.recently_closed_tabs.pop()
+            self.create_tab(item["url"], is_pinned=item.get("pinned", False))
+            self.show_status_message("Guia reaberta: " + str(item.get("title", "Nova Guia")))
+            return True
+
+        self.show_status_message("Nenhuma guia ou janela recente para reabrir.")
+        return False
+
     def save_session(self):
-        session_data = []
+        session_data = {
+            "window_id": self.window_id,
+            "closed_at": time.time(),
+            "tabs": []
+        }
         for tab in self.tabs:
             u = tab.webview.get_uri() if tab.webview else tab.url
-            if u:
-                session_data.append({"url": u, "title": tab.title, "pinned": tab.is_pinned})
+            if u and not u.startswith("about:blank"):
+                session_data["tabs"].append({"url": u, "title": tab.title, "pinned": tab.is_pinned})
+
+        active_file = os.path.join(SESSIONS_DIR, "window_" + self.window_id + ".json")
         try:
-            with open(SESSION_FILE, "w", encoding="utf-8") as f:
+            with open(active_file, "w", encoding="utf-8") as f:
                 json.dump(session_data, f, ensure_ascii=False, indent=2)
         except Exception:
             pass
 
-    def restore_session(self):
-        if not os.path.exists(SESSION_FILE):
-            return
+    def restore_session_from_file(self, file_path):
+        if not os.path.exists(file_path):
+            return False
         try:
-            with open(SESSION_FILE, "r", encoding="utf-8") as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                if isinstance(data, list) and data:
-                    for item in data:
-                        self.create_tab(item.get("url", DEFAULT_URL), is_pinned=item.get("pinned", False))
+
+            tab_list = []
+            if isinstance(data, list):
+                tab_list = data
+            elif isinstance(data, dict):
+                tab_list = data.get("tabs", [])
+
+            if tab_list:
+                for item in tab_list:
+                    self.create_tab(item.get("url", DEFAULT_URL), is_pinned=item.get("pinned", False))
+                try:
+                    os.remove(file_path)
+                except Exception:
+                    pass
+                self.save_session()
+                return True
         except Exception:
             pass
+        return False
+
+    def restore_session(self):
+        if self.specific_session_file and os.path.exists(self.specific_session_file):
+            return self.restore_session_from_file(self.specific_session_file)
+
+        # Sessões ativas órfãs (recuperação de encerramento inesperado)
+        active_files = [os.path.join(SESSIONS_DIR, f) for f in os.listdir(SESSIONS_DIR) if f.startswith("window_") and f.endswith(".json")]
+        if active_files:
+            active_files.sort()
+            res = self.restore_session_from_file(active_files[0])
+            for extra in active_files[1:]:
+                try:
+                    subprocess.Popen([sys.executable, os.path.abspath(__file__), "--session-file", extra])
+                except Exception:
+                    pass
+            return res
+
+        # Sessões normais fechadas previamente
+        closed_files = [os.path.join(CLOSED_WINDOWS_DIR, f) for f in os.listdir(CLOSED_WINDOWS_DIR) if f.startswith("window_") and f.endswith(".json")]
+        if not closed_files:
+            if os.path.exists(SESSION_FILE):
+                return self.restore_session_from_file(SESSION_FILE)
+            return False
+
+        items = []
+        for f in closed_files:
+            info = self.read_closed_window_file(f)
+            if info:
+                items.append(info)
+
+        if not items:
+            return False
+
+        items.sort(key=lambda x: x["closed_at"], reverse=True)
+
+        cluster = [items[0]]
+        THRESHOLD_SECONDS = 5.0
+        for item in items[1:]:
+            if abs(cluster[-1]["closed_at"] - item["closed_at"]) <= THRESHOLD_SECONDS:
+                cluster.append(item)
+            else:
+                break
+
+        res = self.restore_session_from_file(cluster[0]["path"])
+
+        for extra in cluster[1:]:
+            try:
+                subprocess.Popen([sys.executable, os.path.abspath(__file__), "--session-file", extra["path"]])
+            except Exception:
+                pass
+
+        return res
 
     def on_close_app(self, *args):
-        self.save_session()
+        active_file = os.path.join(SESSIONS_DIR, "window_" + self.window_id + ".json")
+        if os.path.exists(active_file):
+            try:
+                os.remove(active_file)
+            except Exception:
+                pass
+
+        valid_tabs = []
+        for tab in self.tabs:
+            u = tab.webview.get_uri() if tab.webview else tab.url
+            if u and not u.startswith("about:blank") and (u.startswith("http://") or u.startswith("https://")):
+                valid_tabs.append({"url": u, "title": tab.title, "pinned": tab.is_pinned})
+
+        if valid_tabs:
+            now = time.time()
+            closed_file = os.path.join(CLOSED_WINDOWS_DIR, "window_" + str(int(now * 1000)) + "_" + self.window_id + ".json")
+            data = {
+                "window_id": self.window_id,
+                "closed_at": now,
+                "tabs": valid_tabs
+            }
+            try:
+                with open(closed_file, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+
+            self.clean_old_closed_windows(30)
+
         Gtk.main_quit()
 
 
 def main():
-    app = BostiumApp()
+    specific_session = None
+    if len(sys.argv) >= 3 and sys.argv[1] == "--session-file":
+        specific_session = sys.argv[2]
+    app = BostiumApp(specific_session)
     app.show_all()
     Gtk.main()
 
 
 if __name__ == "__main__":
     main()
+

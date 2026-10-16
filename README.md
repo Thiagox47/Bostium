@@ -58,13 +58,24 @@ Um clique e o vídeo se solta da página em uma janela flutuante sempre no topo,
 ### 🧹 3. Botão de Faxina Turbo de RAM
 No canto superior direito, o badge `⚡ ... MB` mostra em tempo real quanto de memória o Bostium está usando. Quer liberar memória para abrir aquele jogo pesado? Dê um clique nele (ou use `Ctrl+Shift+O`) para forçar o descarte de WorkingSet com as APIs nativas do Windows.
 
-### 💾 4. Restauração Multi-Janela com Memória Fotográfica
-Se você usa múltiplos monitores ou gosta de organizar o Bostium em duas janelas separadas da tela:
-- Ao fechar o navegador, ele memoriza não só as abas, mas as **coordenadas exatas (X, Y, Largura, Altura e Maximizado)** de cada janela.
-- Quando você abre o Bostium novamente, ele reabre todas as janelas nos seus devidos lugares e com suas respectivas abas salvas!
+### 💾 4. Restauração Inteligente de Sessão (Multi-Janela e Guia Fechada)
+Se você usa múltiplos monitores ou costuma abrir várias janelas do Bostium com várias abas:
+- **Fechamento Simultâneo (ao mesmo tempo ou desligamento do Windows)**: Se todas as janelas forem fechadas simultaneamente, ao reabrir o Bostium todas as janelas e suas abas serão restauradas nas suas posições e tamanhos exatos!
+- **Fechamento Sequencial (uma de cada vez)**: Se você fechar uma janela e continuar navegando em outra, na próxima inicialização o Bostium abrirá **apenas a última janela utilizada**, evitando poluir sua tela com janelas que você já havia dispensado.
+- **Restauração Rápida (`Ctrl + Shift + T`)**: Fechou uma janela ou aba por engano? Pressione `Ctrl + Shift + T` (ou clique com botão direito na barra de guias) para reabrir imediatamente as últimas guias fechadas e até a outra janela completa!
 
 ### ⭐ 5. Barra de Favoritos Prática
 Adicione páginas com um clique na estrela do endereço (`Ctrl+D`), abra em nova aba com o botão do meio e oculte ou exiba a barra quando quiser com `Ctrl+Shift+B`.
+
+### 🔔 6. Notificações da Web Nativas (WhatsApp Web, YouTube, etc.)
+Sites que emitem alertas e notificações funcionam perfeitamente:
+- **Autorização Inteligente**: Permissões de notificação são salvas de forma persistente no perfil do navegador.
+- **Proteção Automática de Abas Ativas**: Abas com notificações ativas (como WhatsApp Web ou Telegram) recebem imunidade automática contra hibernação de RAM, mantendo conexões WebSockets ativas para você nunca perder uma mensagem.
+- **Notificação Dupla Confiável**: Alertas são exibidos através de notificações de sistema (bandeja/tray) e um card flutuante Dark Toast no canto da tela com foco imediato com um clique na aba de origem.
+
+### 🔗 7. Abertura Fluida de Links na Mesma Janela (Scroll do Mouse)
+Chega de abas abrindo fora de controle em instâncias soltas do motor Chromium:
+- Ao clicar em links com o **botão do meio (scroll do mouse)** ou links com `target="_blank"`, eles abrem diretamente no mesmo navegador como uma nova guia do Bostium!
 
 ---
 
@@ -73,6 +84,7 @@ Adicione páginas com um clique na estrela do endereço (`Ctrl+D`), abra em nova
 | Atalho | O que ele faz? |
 | :--- | :--- |
 | `Ctrl + T` | Cria uma nova guia do Google. |
+| `Ctrl + Shift + T` | **Reabre a última guia ou janela fechada** (estilo Chrome / Edge). |
 | `Ctrl + W` | Fecha a guia atualmente ativa. |
 | `Ctrl + N` | Abre uma nova janela limpa e independente do Bostium. |
 | `Ctrl + D` | Adiciona ou remove a página atual dos Favoritos (estrela ⭐). |
@@ -85,6 +97,7 @@ Adicione páginas com um clique na estrela do endereço (`Ctrl+D`), abra em nova
 | **Clique do Meio (Scroll)** em uma aba | Fecha a aba imediatamente sem precisar acertar o 'X'. |
 | **Clique do Meio** no vazio da barra | Cria uma nova guia rapidamente. |
 | **Clique do Meio** em um Favorito | Abre o site salvo em uma nova aba em segundo plano. |
+| **Clique do Meio (Scroll)** em qualquer link | Abre o link em uma nova guia dentro do mesmo navegador Bostium. |
 
 ---
 
